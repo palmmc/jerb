@@ -72,6 +72,8 @@ jobs:
           ./gradlew generateChangelog
           # Replace spaces with dashes in all built JARs
           find . -name "* *.jar" -type f -exec bash -c 'mv "$1" "${1// /-}"' _ {} \;
+          # Delete javadoc jars so they aren't uploaded to GitHub release
+          find . -name "*-javadoc.jar" -type f -delete
         env:
           KOFI_VERIFICATION_TOKEN: ${{ secrets.KOFI_VERIFICATION_TOKEN }}
 
