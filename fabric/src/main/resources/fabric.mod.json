@@ -1,0 +1,40 @@
+{
+    "schemaVersion": 1,
+    "id": "jerb",
+    "version": "${version}",
+    "name": "Just Enough Recipe Book",
+    "description": "${description}\\n\\n${credits}",
+    "authors": [
+        "${mod_author}"
+    ],
+    "contact": {
+        "sources": "https://github.com/palm1/jerb",
+        "issues": "https://github.com/palm1/jerb/issues"
+    },
+    "custom": {
+        "modmenu": {
+            "links": {
+                "modmenu.discord": "https://discord.gg/Fuuxaq6KPh"
+            }
+        }
+    },
+    "license": "${license}",
+    "icon": "assets/jerb/icon.png",
+    "entrypoints": {
+        "client": [
+            "com.palm1.jerb.fabric.JerbFabricClient"
+        ],
+        "jei_mod_plugin": [
+            "com.palm1.jerb.compat.JerbJeiPlugin"
+        ]
+    },
+    "mixins": [
+        "jerb.mixins.json"
+    ],
+    "depends": {
+        "fabricloader": ">=${fabric_loader_version}",
+        "fabric-api": "*",
+        "minecraft": "1.21.1",
+        "java": ">=${java_version}"
+    }
+}

@@ -1,0 +1,194 @@
+import groovy.json.JsonSlurper
+import java.net.HttpURLConnection
+import java.net.URL
+
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+ext.getKofiToken = { ->
+    def prop = project.findProperty("KOFI_VERIFICATION_TOKEN")
+    if (prop) return prop.toString().trim()
+
+    def env = System.getenv("KOFI_VERIFICATION_TOKEN")
+    if (env) return env.trim()
+
+    try {
+        def envFile = project.rootProject.file(".env")
+        if (envFile.exists()) {
+            for (line in envFile.readLines()) {
+                line = line.trim()
+                if (line && !line.startsWith("#") && line.contains("=")) {
+                    def parts = line.split("=", 2)
+                    def key = parts[0].trim()
+                    def val = parts[1].trim()
+                    if (key == "KOFI_VERIFICATION_TOKEN" || key == "ORG_GRADLE_PROJECT_KOFI_VERIFICATION_TOKEN") {
+                        if ((val.startsWith("\"") && val.endsWith("\"")) || (val.startsWith("'") && val.endsWith("'"))) {
+                            val = val.substring(1, val.length() - 1)
+                        }
+                        return val.trim()
+                    }
+                }
+            }
+        }
+    } catch (Exception e) {
+        project.logger.error("Failed to parse .env file", e)
+    }
+    return null
+}
+
+ext.fetchSupporters = { ->
+    if (rootProject.hasProperty('cachedSupporters')) {
+        return rootProject.cachedSupporters
+    }
+
+    def names = []
+    def token = project.getKofiToken()
+    if (!token) {
+        rootProject.ext.cachedSupporters = names
+        return names
+    }
+
+    try {
+        def url = new URL("https://perks.palm1.dev/api/active-members")
+        def conn = (HttpURLConnection) url.openConnection()
+        conn.setRequestMethod("GET")
+        conn.setRequestProperty("Authorization", "Bearer " + token)
+        conn.setRequestProperty("Accept", "application/json")
+        conn.setRequestProperty("User-Agent", "LampLib-Gradle-Builder/1.0")
+        conn.setConnectTimeout(5000)
+        conn.setReadTimeout(5000)
+
+        if (conn.getResponseCode() == 200) {
+            def responseText = conn.getInputStream().getText("UTF-8")
+            def json = new JsonSlurper().parseText(responseText)
+            if (json && json.members) {
+                names = json.members.collect { member ->
+                    def name = member.minecraft_username
+                    if (name == null || name.toString().trim().isEmpty() || name.toString().equalsIgnoreCase("null")) {
+                        name = member.last_known_name
+                    }
+                    return name != null ? name.toString().trim() : null
+                }.findAll { it != null && !it.isEmpty() && !it.equalsIgnoreCase("PalmMC") }
+            }
+        } else {
+            project.logger.error("Failed to fetch supporters from perks API: HTTP " + conn.getResponseCode())
+        }
+    } catch (Exception e) {
+        project.logger.error("Failed to fetch active supporters dynamically.", e)
+    }
+
+    rootProject.ext.cachedSupporters = names
+    return names
+}
+
+
+base {
+    archivesName = "${mod_name.replace(' ', '-').replaceAll(/[^a-zA-Z0-9_-]/, '')}-${project.name}-${minecraft_version}"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(java_version)
+    withSourcesJar()
+    withJavadocJar()
+}
+
+repositories {
+    mavenCentral()
+    // https://docs.gradle.org/current/userguide/declaring_repositories.html#declaring_content_exclusively_found_in_one_repository
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'Sponge'
+                url = 'https://repo.spongepowered.org/repository/maven-public'
+            }
+        }
+        filter { includeGroupAndSubgroups('org.spongepowered') }
+    }
+    maven {
+        name = 'BlameJared'
+        url = 'https://maven.blamejared.com'
+    }
+}
+
+sourcesJar {
+    from(rootProject.file('LICENSE')) {
+        rename { "${it}_${mod_name}" }
+    }
+}
+
+jar {
+    from(rootProject.file('LICENSE')) {
+        rename { "${it}_${mod_name}" }
+    }
+
+    manifest {
+        attributes([
+                'Specification-Title'   : mod_name,
+                'Specification-Vendor'  : mod_author,
+                'Specification-Version' : project.jar.archiveVersion,
+                'Implementation-Title'  : project.name,
+                'Implementation-Version': project.jar.archiveVersion,
+                'Implementation-Vendor' : mod_author,
+                'Built-On-Minecraft'    : minecraft_version
+        ])
+    }
+}
+
+processResources {
+    def supporterList = project.fetchSupporters()
+    def modCredits = ""
+    if (!supporterList.isEmpty()) {
+        def creditsHeader = "Made possible by my lovely supporters!"
+        def formattedSupporters = supporterList.collect { "- §6${it}§r" }.join("\n")
+        modCredits = creditsHeader + "\n" + formattedSupporters
+    }
+
+    var expandProps = [
+            'version'                      : version,
+            'group'                        : project.group, //Else we target the task's group.
+            'minecraft_version'            : minecraft_version,
+            'minecraft_version_range'      : minecraft_version_range,
+            'fabric_version'               : fabric_version,
+            'fabric_loader_version'        : fabric_loader_version,
+            'mod_name'                     : mod_name,
+            'mod_author'                   : mod_author,
+            'mod_id'                       : mod_id,
+            'license'                      : license,
+            'description'                  : project.description,
+            'neoforge_version'             : neoforge_version,
+            'neoforge_loader_version_range': neoforge_loader_version_range,
+            'credits'                      : modCredits,
+            'java_version'                 : java_version,
+            'modmenu_version'              : modmenu_version
+    ]
+
+    var jsonExpandProps = expandProps.collectEntries {
+        key, value -> [(key): value instanceof String ? value.replace("\n", "\\n") : value]
+    }
+
+    filesMatching(['META-INF/mods.toml', 'META-INF/neoforge.mods.toml']) {
+        expand expandProps
+    }
+
+    filesMatching(['pack.mcmeta', 'fabric.mod.json', '*.mixins.json']) {
+        expand jsonExpandProps
+    }
+
+    inputs.properties(expandProps)
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifactId base.archivesName.get()
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url System.getenv('local_maven_url')
+        }
+    }
+}

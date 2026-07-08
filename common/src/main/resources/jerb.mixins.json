@@ -1,0 +1,24 @@
+{
+  "required": true,
+  "package": "com.palm1.jerb.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerPlayerMixin",
+    "ServerRecipeBookMixin",
+    "RecipeBookMixin"
+  ],
+  "client": [
+    "ClientRecipeBookMixin",
+    "RecipeBookComponentMixin",
+    "RecipeBookPageMixin",
+    "RecipeButtonMixin",
+    "RecipeBookTabButtonMixin",
+    "JeiOverlayMixin",
+    "ReiOverlayMixin",
+    "EmiOverlayMixin",
+    "EmiConfigMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

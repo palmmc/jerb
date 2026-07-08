@@ -1,0 +1,82 @@
+import groovy.json.JsonSlurper
+import java.net.HttpURLConnection
+import java.net.URL
+
+plugins {
+    id 'multiloader-common'
+}
+
+configurations {
+    commonJava{
+        canBeResolved = true
+    }
+    commonResources{
+        canBeResolved = true
+    }
+}
+
+dependencies {
+    compileOnly(project(':common')) {
+        def loaderAttribute = Attribute.of('io.github.mcgradleconventions.loader', String)
+        attributes {
+            attribute(loaderAttribute, 'common')
+        }
+    }
+    commonJava project(path: ':common', configuration: 'commonJava')
+    commonResources project(path: ':common', configuration: 'commonResources')
+}
+
+tasks.named('compileJava', JavaCompile) {
+    dependsOn(configurations.commonJava)
+    source(configurations.commonJava)
+}
+
+processResources {
+    dependsOn(configurations.commonResources)
+    from(configurations.commonResources)
+}
+
+tasks.named('javadoc', Javadoc).configure {
+    dependsOn(configurations.commonJava)
+    source(configurations.commonJava)
+}
+
+tasks.named('sourcesJar', Jar) {
+    dependsOn(configurations.commonJava)
+    from(configurations.commonJava)
+    dependsOn(configurations.commonResources)
+    from(configurations.commonResources)
+}
+
+tasks.register('generateChangelog') {
+    group = 'publishing'
+    description = 'Generates a changelog for GitHub releases including supporter credits.'
+    
+    def projectVersion = project.version.toString()
+    def changelogFile = project.rootProject.layout.buildDirectory.file("github_changelog.md")
+    def supporterList = project.fetchSupporters()
+
+    doLast {
+        def commitMsg = ""
+        try {
+            def stdout = new ByteArrayOutputStream()
+            exec {
+                commandLine 'git', 'log', '-1', '--pretty=%B'
+                standardOutput = stdout
+            }
+            commitMsg = stdout.toString().trim()
+        } catch (Exception e) {
+            commitMsg = "Release of version ${projectVersion}"
+        }
+        
+        def changelog = commitMsg
+        if (!supporterList.isEmpty()) {
+            def formattedSupporters = supporterList.collect { "**${it}**" }.join(", ")
+            changelog += "\n\nThank you to my lovely supporters on Ko-fi: ${formattedSupporters}"
+        }
+        
+        def fileObj = changelogFile.get().asFile
+        fileObj.parentFile.mkdirs()
+        fileObj.text = changelog
+    }
+}

@@ -1,0 +1,27 @@
+# eclipse
+.vscode
+bin
+*.launch
+.settings
+.metadata
+.classpath
+.project
+.env
+INTEGRATION_REFERENCES
+
+# idea
+out
+*.ipr
+*.iws
+*.iml
+.idea/*
+!.idea/scopes
+
+# gradle
+build
+.gradle
+
+# other
+eclipse
+run
+runs
