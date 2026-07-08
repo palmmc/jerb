@@ -3,13 +3,16 @@ package com.palm1.jerb.mixin;
 import com.palm1.jerb.RecipeBrowserIntegration;
 import com.palm1.jerb.JerbRecipeBookPage;
 import com.palm1.jerb.JerbTabButton;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.recipebook.RecipeBookComponent;
 import net.minecraft.client.gui.screens.recipebook.RecipeBookPage;
 import net.minecraft.client.gui.screens.recipebook.RecipeBookTabButton;
-import net.minecraft.client.RecipeBookCategories;
+import net.minecraft.client.gui.screens.recipebook.SearchRecipeBookCategory;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.CreativeModeTab;
@@ -26,10 +29,13 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import net.minecraft.world.flag.FeatureFlagSet;
 import net.minecraft.core.HolderLookup;
-import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.entity.player.StackedContents;
+import net.minecraft.resources.Identifier;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.entity.player.StackedItemContents;
+import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.inventory.RecipeBookMenu;
-import net.minecraft.client.gui.components.StateSwitchingButton;
+import net.minecraft.client.gui.components.CycleButton;
+import net.minecraft.client.gui.components.ImageButton;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,15 +62,15 @@ public abstract class RecipeBookComponentMixin {
     public abstract boolean isVisible();
 
     @Shadow
-    protected abstract void updateCollections(boolean resetPage);
+    protected abstract void updateCollections(boolean resetPage, boolean otherParam);
 
     @Shadow
-    protected RecipeBookMenu<?, ?> menu;
+    protected RecipeBookMenu menu;
     @Shadow
     @org.spongepowered.asm.mixin.Final
-    protected StackedContents stackedContents;
+    protected StackedItemContents stackedContents;
     @Shadow
-    protected StateSwitchingButton filterButton;
+    protected CycleButton<Boolean> filterButton;
 
     @Unique
     private CreativeModeTab jerb$selectedCreativeTab;
@@ -144,10 +150,9 @@ public abstract class RecipeBookComponentMixin {
         int totalTabs = allTabs.size();
         int maxTabsPerPage = 5;
         this.jerb$maxPages = (totalTabs + maxTabsPerPage - 1) / maxTabsPerPage;
-        int maxPages = this.jerb$maxPages;
 
-        if (this.jerb$tabPageIndex >= maxPages) {
-            this.jerb$tabPageIndex = maxPages - 1;
+        if (this.jerb$tabPageIndex >= this.jerb$maxPages) {
+            this.jerb$tabPageIndex = this.jerb$maxPages - 1;
         }
         if (this.jerb$tabPageIndex < 0) {
             this.jerb$tabPageIndex = 0;
@@ -160,26 +165,30 @@ public abstract class RecipeBookComponentMixin {
         int paneY = (this.height - 166) / 2;
         int currentY = paneY + 3;
 
+        RecipeBookComponent.TabInfo dummyTabInfo = new RecipeBookComponent.TabInfo(
+                SearchRecipeBookCategory.CRAFTING);
+
         for (int i = start; i < end; i++) {
             CreativeModeTab tab = allTabs.get(i);
-            RecipeBookTabButton tabButton = new RecipeBookTabButton(RecipeBookCategories.CRAFTING_SEARCH);
+            RecipeBookTabButton tabButton = new RecipeBookTabButton(paneX - 30, currentY, dummyTabInfo, btn -> {
+            });
             ((JerbTabButton) tabButton).jerb$setCreativeTab(tab);
-            tabButton.setPosition(paneX - 30, currentY);
 
             if (tab == this.jerb$selectedCreativeTab) {
-                tabButton.setStateTriggered(true);
+                tabButton.select();
                 this.selectedTab = tabButton;
             } else {
-                tabButton.setStateTriggered(false);
+                tabButton.unselect();
             }
 
             this.tabButtons.add(tabButton);
             currentY += 27;
         }
 
-        if (maxPages > 1) {
+        if (this.jerb$maxPages > 1) {
             if (this.jerb$tabPageIndex > 0) {
-                RecipeBookTabButton upBtn = new RecipeBookTabButton(RecipeBookCategories.CRAFTING_SEARCH) {
+                RecipeBookTabButton upBtn = new RecipeBookTabButton(paneX - 19, paneY - 15, dummyTabInfo, btn -> {
+                }) {
                     {
                         this.width = 12;
                         this.height = 17;
@@ -196,16 +205,18 @@ public abstract class RecipeBookComponentMixin {
                     }
 
                     @Override
-                    public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-                        ResourceLocation sprite = this.isHoveredOrFocused()
-                                ? ResourceLocation.withDefaultNamespace("recipe_book/page_backward_highlighted")
-                                : ResourceLocation.withDefaultNamespace("recipe_book/page_backward");
-                        guiGraphics.pose().pushPose();
-                        guiGraphics.pose().translate(this.getX() + 6.0F, this.getY() + 8.5F, 0.0F);
-                        guiGraphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(90.0F));
-                        guiGraphics.pose().translate(-6.0F, -8.5F, 0.0F);
-                        guiGraphics.blitSprite(sprite, 0, 0, 12, 17);
-                        guiGraphics.pose().popPose();
+                    public void extractContents(GuiGraphicsExtractor extractor, int mouseX, int mouseY,
+                            float partialTick) {
+                        Identifier sprite = this.isHoveredOrFocused()
+                                ? Identifier.withDefaultNamespace("recipe_book/page_backward_highlighted")
+                                : Identifier.withDefaultNamespace("recipe_book/page_backward");
+                        extractor.pose().pushMatrix();
+                        extractor.pose().translate(this.getX() + 6.0F, this.getY() + 8.5F);
+                        extractor.pose().rotate((float) Math.toRadians(90.0F));
+                        extractor.pose().translate(-6.0F, -8.5F);
+                        extractor.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, 0, 0,
+                                12, 17);
+                        extractor.pose().popMatrix();
                     }
                 };
                 upBtn.setPosition(paneX - 19, paneY - 15);
@@ -213,8 +224,10 @@ public abstract class RecipeBookComponentMixin {
                 this.tabButtons.add(upBtn);
             }
 
-            if (this.jerb$tabPageIndex < maxPages - 1) {
-                RecipeBookTabButton downBtn = new RecipeBookTabButton(RecipeBookCategories.CRAFTING_SEARCH) {
+            if (this.jerb$tabPageIndex < this.jerb$maxPages - 1) {
+                RecipeBookTabButton downBtn = new RecipeBookTabButton(paneX - 19, paneY + 3 + 5 * 27, dummyTabInfo,
+                        btn -> {
+                        }) {
                     {
                         this.width = 12;
                         this.height = 17;
@@ -231,16 +244,18 @@ public abstract class RecipeBookComponentMixin {
                     }
 
                     @Override
-                    public void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-                        ResourceLocation sprite = this.isHoveredOrFocused()
-                                ? ResourceLocation.withDefaultNamespace("recipe_book/page_forward_highlighted")
-                                : ResourceLocation.withDefaultNamespace("recipe_book/page_forward");
-                        guiGraphics.pose().pushPose();
-                        guiGraphics.pose().translate(this.getX() + 6.0F, this.getY() + 8.5F, 0.0F);
-                        guiGraphics.pose().mulPose(com.mojang.math.Axis.ZP.rotationDegrees(90.0F));
-                        guiGraphics.pose().translate(-6.0F, -8.5F, 0.0F);
-                        guiGraphics.blitSprite(sprite, 0, 0, 12, 17);
-                        guiGraphics.pose().popPose();
+                    public void extractContents(GuiGraphicsExtractor extractor, int mouseX, int mouseY,
+                            float partialTick) {
+                        Identifier sprite = this.isHoveredOrFocused()
+                                ? Identifier.withDefaultNamespace("recipe_book/page_forward_highlighted")
+                                : Identifier.withDefaultNamespace("recipe_book/page_forward");
+                        extractor.pose().pushMatrix();
+                        extractor.pose().translate(this.getX() + 6.0F, this.getY() + 8.5F);
+                        extractor.pose().rotate((float) Math.toRadians(90.0F));
+                        extractor.pose().translate(-6.0F, -8.5F);
+                        extractor.blitSprite(RenderPipelines.GUI_TEXTURED, sprite, 0, 0,
+                                12, 17);
+                        extractor.pose().popMatrix();
                     }
                 };
                 downBtn.setPosition(paneX - 19, paneY + 3 + 5 * 27);
@@ -250,8 +265,8 @@ public abstract class RecipeBookComponentMixin {
         }
     }
 
-    @Inject(method = "initVisuals", at = @At("TAIL"))
-    public void onInitVisuals(CallbackInfo ci) {
+    @Inject(method = "init", at = @At("TAIL"))
+    public void onInit(int width, int height, Minecraft minecraft, boolean widthTooNarrow, CallbackInfo ci) {
         if (RecipeBrowserIntegration.isActive()) {
             this.stackedContents.clear();
             Minecraft mc = Minecraft.getInstance();
@@ -262,13 +277,13 @@ public abstract class RecipeBookComponentMixin {
             RecipeBrowserIntegration.setActiveContext(
                     this.stackedContents,
                     this.menu.getRecipeBookType(),
-                    this.menu instanceof net.minecraft.world.inventory.InventoryMenu);
+                    this.menu instanceof InventoryMenu);
             this.jerb$rebuildCreativeTabs();
         }
     }
 
     @Inject(method = "updateCollections", at = @At("HEAD"), cancellable = true)
-    public void onUpdateCollections(boolean resetPage, CallbackInfo ci) {
+    public void onUpdateCollections(boolean resetPage, boolean otherParam, CallbackInfo ci) {
         if (RecipeBrowserIntegration.isActive()) {
             this.stackedContents.clear();
             Minecraft mc = Minecraft.getInstance();
@@ -280,7 +295,7 @@ public abstract class RecipeBookComponentMixin {
             RecipeBrowserIntegration.setActiveContext(
                     this.stackedContents,
                     this.menu.getRecipeBookType(),
-                    this.menu instanceof net.minecraft.world.inventory.InventoryMenu);
+                    this.menu instanceof InventoryMenu);
 
             String query = this.searchBox != null ? this.searchBox.getValue() : "";
             if (this.searchBox != null && this.searchBox.isFocused()) {
@@ -289,12 +304,11 @@ public abstract class RecipeBookComponentMixin {
 
             List<ItemStack> filtered = RecipeBrowserIntegration.getFilteredItems(query, this.jerb$selectedCreativeTab);
 
-            boolean filtering = this.filterButton != null && this.filterButton.isStateTriggered();
+            boolean filtering = this.filterButton != null && this.filterButton.getValue();
             if (filtering) {
                 List<ItemStack> craftableOnly = new ArrayList<>();
                 for (ItemStack stack : filtered) {
-                    if (RecipeBrowserIntegration.isCraftable(stack.getItem(), this.stackedContents,
-                            this.menu.getRecipeBookType())) {
+                    if (RecipeBrowserIntegration.isCraftable(stack.getItem())) {
                         craftableOnly.add(stack);
                     }
                 }
@@ -314,19 +328,24 @@ public abstract class RecipeBookComponentMixin {
             if (!localQuery.equals(browserQuery)) {
                 if (this.searchBox.isFocused()) {
                     RecipeBrowserIntegration.setSearchText(localQuery);
-                    this.updateCollections(false);
+                    this.updateCollections(false, false);
                 } else {
                     this.searchBox.setValue(browserQuery);
-                    this.updateCollections(false);
+                    this.updateCollections(false, false);
                 }
             }
         }
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    public void onMouseClicked(double mouseX, double mouseY, int button, CallbackInfoReturnable<Boolean> cir) {
+    public void onMouseClicked(MouseButtonEvent event, boolean doubleClick,
+            CallbackInfoReturnable<Boolean> cir) {
         if (RecipeBrowserIntegration.isActive() && this.isVisible()) {
+            double mouseX = event.x();
+            double mouseY = event.y();
+            int button = event.button();
             int paneY = (this.height - 166) / 2;
+
             for (RecipeBookTabButton tabBtn : this.tabButtons) {
                 if (tabBtn.visible) {
                     boolean isHovered = mouseX >= tabBtn.getX() && mouseX < tabBtn.getX() + tabBtn.getWidth() &&
@@ -334,9 +353,9 @@ public abstract class RecipeBookComponentMixin {
                     if (isHovered && (button == 0 || button == 1)) {
                         CreativeModeTab creativeTab = ((JerbTabButton) tabBtn).jerb$getCreativeTab();
                         if (creativeTab == null) {
-                            net.minecraft.client.resources.sounds.SimpleSoundInstance sound = net.minecraft.client.resources.sounds.SimpleSoundInstance
-                                    .forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F);
-                            net.minecraft.client.Minecraft.getInstance().getSoundManager().play(sound);
+                            SimpleSoundInstance sound = SimpleSoundInstance
+                                    .forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F);
+                            Minecraft.getInstance().getSoundManager().play(sound);
 
                             if (tabBtn.getY() < paneY) {
                                 if (button == 1) {
@@ -354,15 +373,15 @@ public abstract class RecipeBookComponentMixin {
                             this.jerb$rebuildCreativeTabs();
                             cir.setReturnValue(true);
                             return;
-                        } else if (button == 0) { // creative tabs only respond to left click
+                        } else if (button == 0) {
                             this.jerb$selectedCreativeTab = creativeTab;
 
-                            net.minecraft.client.resources.sounds.SimpleSoundInstance sound = net.minecraft.client.resources.sounds.SimpleSoundInstance
-                                    .forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F);
-                            net.minecraft.client.Minecraft.getInstance().getSoundManager().play(sound);
+                            SimpleSoundInstance sound = SimpleSoundInstance
+                                    .forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F);
+                            Minecraft.getInstance().getSoundManager().play(sound);
 
                             this.jerb$rebuildCreativeTabs();
-                            this.updateCollections(true);
+                            this.updateCollections(true, false);
                             cir.setReturnValue(true);
                             return;
                         }
@@ -374,10 +393,8 @@ public abstract class RecipeBookComponentMixin {
 
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
         if (RecipeBrowserIntegration.isActive() && this.isVisible()) {
-            net.minecraft.client.gui.components.StateSwitchingButton forwardBtn = ((JerbRecipeBookPage) this.recipeBookPage)
-                    .jerb$getForwardButton();
-            net.minecraft.client.gui.components.StateSwitchingButton backBtn = ((JerbRecipeBookPage) this.recipeBookPage)
-                    .jerb$getBackButton();
+            ImageButton forwardBtn = ((JerbRecipeBookPage) this.recipeBookPage).jerb$getForwardButton();
+            ImageButton backBtn = ((JerbRecipeBookPage) this.recipeBookPage).jerb$getBackButton();
             int currentPage = ((JerbRecipeBookPage) this.recipeBookPage).jerb$getCurrentPage();
             int totalPages = ((JerbRecipeBookPage) this.recipeBookPage).jerb$getTotalPages();
 
@@ -443,14 +460,14 @@ public abstract class RecipeBookComponentMixin {
     @Inject(method = "isMouseOver", at = @At("HEAD"), cancellable = true)
     public void onIsMouseOver(double mouseX, double mouseY, CallbackInfoReturnable<Boolean> cir) {
         if (RecipeBrowserIntegration.isActive() && this.isVisible()) {
-            StateSwitchingButton forwardBtn = ((JerbRecipeBookPage) this.recipeBookPage).jerb$getForwardButton();
+            ImageButton forwardBtn = ((JerbRecipeBookPage) this.recipeBookPage).jerb$getForwardButton();
             if (forwardBtn != null && forwardBtn.visible && mouseX >= forwardBtn.getX()
                     && mouseX < forwardBtn.getX() + forwardBtn.getWidth() && mouseY >= forwardBtn.getY()
                     && mouseY < forwardBtn.getY() + forwardBtn.getHeight()) {
                 cir.setReturnValue(true);
                 return;
             }
-            StateSwitchingButton backBtn = ((JerbRecipeBookPage) this.recipeBookPage).jerb$getBackButton();
+            ImageButton backBtn = ((JerbRecipeBookPage) this.recipeBookPage).jerb$getBackButton();
             if (backBtn != null && backBtn.visible && mouseX >= backBtn.getX()
                     && mouseX < backBtn.getX() + backBtn.getWidth() && mouseY >= backBtn.getY()
                     && mouseY < backBtn.getY() + backBtn.getHeight()) {

@@ -23,7 +23,8 @@ public class ReiCompat {
     public static List<ItemStack> getFilteredItemStacks() {
         try {
             List<EntryStack<?>> entries = EntryRegistry.getInstance().getPreFilteredList();
-            if (entries == null) return List.of();
+            if (entries == null)
+                return List.of();
             List<ItemStack> list = new ArrayList<>();
             for (EntryStack<?> stack : entries) {
                 if (stack != null && stack.getValue() instanceof ItemStack itemStack) {
@@ -51,7 +52,8 @@ public class ReiCompat {
             if (widget != null) {
                 widget.setText(text);
             }
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 
     public static void showRecipes(ItemStack stack) {
@@ -59,7 +61,8 @@ public class ReiCompat {
             ViewSearchBuilder.builder()
                     .addRecipesFor(EntryStacks.of(stack))
                     .open();
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 
     public static void showUsages(ItemStack stack) {
@@ -67,21 +70,26 @@ public class ReiCompat {
             ViewSearchBuilder.builder()
                     .addUsagesFor(EntryStacks.of(stack))
                     .open();
-        } catch (Throwable ignored) {}
+        } catch (Throwable ignored) {
+        }
     }
 
     public static boolean hasRecipesOrUsages(ItemStack stack) {
-        if (stack == null || stack.isEmpty()) return false;
+        if (stack == null || stack.isEmpty())
+            return false;
         Item item = stack.getItem();
         return cache.computeIfAbsent(item, i -> {
             try {
-                if (ViewSearchBuilder.builder().addRecipesFor(EntryStacks.of(stack)).streamDisplays().findAny().isPresent()) {
+                if (ViewSearchBuilder.builder().addRecipesFor(EntryStacks.of(stack)).streamDisplays().findAny()
+                        .isPresent()) {
                     return true;
                 }
-                if (ViewSearchBuilder.builder().addUsagesFor(EntryStacks.of(stack)).streamDisplays().findAny().isPresent()) {
+                if (ViewSearchBuilder.builder().addUsagesFor(EntryStacks.of(stack)).streamDisplays().findAny()
+                        .isPresent()) {
                     return true;
                 }
-            } catch (Throwable ignored) {}
+            } catch (Throwable ignored) {
+            }
             return false;
         });
     }

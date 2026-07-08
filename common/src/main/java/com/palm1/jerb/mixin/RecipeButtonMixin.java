@@ -1,12 +1,15 @@
 package com.palm1.jerb.mixin;
 
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import com.palm1.jerb.JerbRecipeButton;
+import com.palm1.jerb.RecipeBrowserIntegration;
+
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.recipebook.RecipeButton;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -15,7 +18,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.narration.NarratedElementType;
 import java.util.List;
@@ -39,39 +41,41 @@ public abstract class RecipeButtonMixin extends AbstractWidget implements JerbRe
         return this.jerb$item;
     }
 
-    @Inject(method = "renderWidget", at = @At("HEAD"), cancellable = true)
-    public void onRenderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
+    @Inject(method = "getDisplayStack", at = @At("HEAD"), cancellable = true)
+    public void onGetDisplayStack(CallbackInfoReturnable<ItemStack> cir) {
         if (this.jerb$item != null) {
-            ResourceLocation sprite;
-            boolean craftable = com.palm1.jerb.RecipeBrowserIntegration.isCraftable(this.jerb$item.getItem());
+            cir.setReturnValue(this.jerb$item);
+        }
+    }
+
+    @Inject(method = "extractWidgetRenderState", at = @At("HEAD"), cancellable = true)
+    public void onExtractWidgetRenderState(GuiGraphicsExtractor extractor, int mouseX, int mouseY, float partialTick,
+            CallbackInfo ci) {
+        if (this.jerb$item != null) {
+            Identifier sprite;
+            boolean craftable = RecipeBrowserIntegration.isCraftable(this.jerb$item.getItem());
             if (this.isHovered()) {
-                sprite = ResourceLocation.withDefaultNamespace(
+                sprite = Identifier.withDefaultNamespace(
                         craftable ? "recipe_book/slot_many_craftable" : "recipe_book/slot_many_uncraftable");
             } else {
-                sprite = ResourceLocation.withDefaultNamespace(
+                sprite = Identifier.withDefaultNamespace(
                         craftable ? "recipe_book/slot_craftable" : "recipe_book/slot_uncraftable");
             }
-            guiGraphics.blitSprite(sprite, this.getX(), this.getY(), this.width, this.height);
-            guiGraphics.renderFakeItem(this.jerb$item, this.getX() + 4, this.getY() + 4);
+            extractor.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, sprite, this.getX(),
+                    this.getY(), this.width, this.height);
+            extractor.fakeItem(this.jerb$item, this.getX() + 4, this.getY() + 4);
             ci.cancel();
         }
     }
 
     @Inject(method = "getTooltipText", at = @At("HEAD"), cancellable = true)
-    public void onGetTooltipText(CallbackInfoReturnable<List<Component>> cir) {
+    public void onGetTooltipText(ItemStack stack, CallbackInfoReturnable<List<Component>> cir) {
         if (this.jerb$item != null) {
-            Screen screen = net.minecraft.client.Minecraft.getInstance().screen;
+            Screen screen = Minecraft.getInstance().gui.screen();
             if (screen != null) {
                 cir.setReturnValue(
-                        screen.getTooltipFromItem(net.minecraft.client.Minecraft.getInstance(), this.jerb$item));
+                        screen.getTooltipFromItem(Minecraft.getInstance(), this.jerb$item));
             }
-        }
-    }
-
-    @Inject(method = "getOrderedRecipes", at = @At("HEAD"), cancellable = true)
-    public void onGetOrderedRecipes(CallbackInfoReturnable<List<RecipeHolder<?>>> cir) {
-        if (this.jerb$item != null) {
-            cir.setReturnValue(List.of());
         }
     }
 

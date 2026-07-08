@@ -98,6 +98,7 @@ jobs:
             fabric
             quilt
           game-versions: ${{ steps.metadata.outputs.game_versions }}
+          environment: client_or_server_prefers_both
           dependencies: ${{ steps.metadata.outputs.deps_fabric }}
           files: ${{ steps.metadata.outputs.fabric_jar }}
 
@@ -115,6 +116,7 @@ jobs:
           loaders: |-
             neoforge
           game-versions: ${{ steps.metadata.outputs.game_versions }}
+          environment: client_or_server_prefers_both
           dependencies: ${{ steps.metadata.outputs.deps_neoforge }}
           files: ${{ steps.metadata.outputs.neoforge_jar }}
 

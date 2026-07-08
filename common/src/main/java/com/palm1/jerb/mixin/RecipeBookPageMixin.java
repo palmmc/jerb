@@ -4,10 +4,13 @@ import com.palm1.jerb.RecipeBrowserIntegration;
 import com.palm1.jerb.JerbRecipeBookPage;
 import com.palm1.jerb.JerbRecipeButton;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.components.StateSwitchingButton;
+import net.minecraft.client.gui.components.ImageButton;
 import net.minecraft.client.gui.screens.recipebook.RecipeBookPage;
 import net.minecraft.client.gui.screens.recipebook.RecipeButton;
 import net.minecraft.client.gui.screens.recipebook.RecipeCollection;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,10 +31,10 @@ public abstract class RecipeBookPageMixin implements JerbRecipeBookPage {
     private List<RecipeButton> buttons;
     @Shadow
     @Final
-    private StateSwitchingButton forwardButton;
+    private ImageButton forwardButton;
     @Shadow
     @Final
-    private StateSwitchingButton backButton;
+    private ImageButton backButton;
     @Shadow
     private int currentPage;
     @Shadow
@@ -58,12 +61,12 @@ public abstract class RecipeBookPageMixin implements JerbRecipeBookPage {
     }
 
     @Override
-    public StateSwitchingButton jerb$getForwardButton() {
+    public ImageButton jerb$getForwardButton() {
         return this.forwardButton;
     }
 
     @Override
-    public StateSwitchingButton jerb$getBackButton() {
+    public ImageButton jerb$getBackButton() {
         return this.backButton;
     }
 
@@ -107,7 +110,8 @@ public abstract class RecipeBookPageMixin implements JerbRecipeBookPage {
     }
 
     @Inject(method = "updateCollections", at = @At("HEAD"), cancellable = true)
-    public void onUpdateCollections(List<RecipeCollection> collections, boolean resetPage, CallbackInfo ci) {
+    public void onUpdateCollections(List<RecipeCollection> collections, boolean resetPage, boolean otherParam,
+            CallbackInfo ci) {
         if (RecipeBrowserIntegration.isActive() && this.jerb$items != null && !this.jerb$items.isEmpty()) {
             if (resetPage) {
                 this.currentPage = 0;
@@ -122,10 +126,13 @@ public abstract class RecipeBookPageMixin implements JerbRecipeBookPage {
     }
 
     @Inject(method = "mouseClicked", at = @At("HEAD"), cancellable = true)
-    public void onMouseClicked(double mouseX, double mouseY, int button, int x, int y, int width, int height,
+    public void onMouseClicked(MouseButtonEvent event, int x, int y, int width, int height, boolean doubleClick,
             CallbackInfoReturnable<Boolean> cir) {
-        if (RecipeBrowserIntegration.isActive() && this.minecraft.screen != null) {
-            // Check forward/backward buttons first
+        if (RecipeBrowserIntegration.isActive() && this.minecraft.gui.screen() != null) {
+            double mouseX = event.x();
+            double mouseY = event.y();
+            int button = event.button();
+
             if (this.forwardButton.visible && mouseX >= this.forwardButton.getX()
                     && mouseX < this.forwardButton.getX() + this.forwardButton.getWidth()
                     && mouseY >= this.forwardButton.getY()
@@ -137,8 +144,8 @@ public abstract class RecipeBookPageMixin implements JerbRecipeBookPage {
                 } else {
                     return;
                 }
-                net.minecraft.client.resources.sounds.SimpleSoundInstance sound = net.minecraft.client.resources.sounds.SimpleSoundInstance
-                        .forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F);
+                SimpleSoundInstance sound = SimpleSoundInstance
+                        .forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F);
                 this.minecraft.getSoundManager().play(sound);
                 this.jerb$updateButtons();
                 cir.setReturnValue(true);
@@ -154,17 +161,16 @@ public abstract class RecipeBookPageMixin implements JerbRecipeBookPage {
                 } else {
                     return;
                 }
-                net.minecraft.client.resources.sounds.SimpleSoundInstance sound = net.minecraft.client.resources.sounds.SimpleSoundInstance
-                        .forUI(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK, 1.0F);
+                SimpleSoundInstance sound = SimpleSoundInstance
+                        .forUI(SoundEvents.UI_BUTTON_CLICK, 1.0F);
                 this.minecraft.getSoundManager().play(sound);
                 this.jerb$updateButtons();
                 cir.setReturnValue(true);
                 return;
             }
 
-            // Check recipe buttons click
             for (RecipeButton recipeButton : this.buttons) {
-                if (recipeButton.visible && recipeButton.mouseClicked(mouseX, mouseY, button)) {
+                if (recipeButton.visible && recipeButton.mouseClicked(event, doubleClick)) {
                     ItemStack stack = ((JerbRecipeButton) recipeButton).jerb$getItem();
                     if (stack != null && !stack.isEmpty()) {
                         if (button == 0) {

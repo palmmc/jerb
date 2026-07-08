@@ -1,73 +1,61 @@
 package com.palm1.jerb;
 
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.CreativeModeTab;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.crafting.RecipeHolder;
+import net.minecraft.client.ClientRecipeBook;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.recipebook.RecipeCollection;
 import net.minecraft.client.gui.screens.recipebook.RecipeUpdateListener;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.entity.player.StackedContents;
+import net.minecraft.client.gui.screens.recipebook.SearchRecipeBookCategory;
+import net.minecraft.util.context.ContextMap;
+import net.minecraft.world.entity.player.StackedItemContents;
 import net.minecraft.world.inventory.RecipeBookType;
 import com.palm1.jerb.compat.JeiCompat;
 import com.palm1.jerb.compat.ReiCompat;
-import com.palm1.jerb.compat.EmiCompat;
+import net.minecraft.world.item.crafting.RecipeBookCategory;
+import net.minecraft.world.item.crafting.display.RecipeDisplayEntry;
+import net.minecraft.world.item.crafting.display.SlotDisplayContext;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.HashSet;
-import java.util.Map;
-import java.util.HashMap;
 
 public class RecipeBrowserIntegration {
     private static boolean jeiActive = false;
     private static boolean reiActive = false;
-    private static boolean emiActive = false;
     private static Object jeiRuntime = null;
-    private static Set<Item> craftableItems = null;
-    private static StackedContents activeStackedContents = null;
+    private static StackedItemContents activeStackedContents = null;
     private static RecipeBookType activeRecipeBookType = null;
     private static boolean activeIsInventory = false;
-    private static Map<Item, List<RecipeHolder<?>>> recipesByOutput = null;
-    private static net.minecraft.world.item.crafting.RecipeManager cachedRecipeManager = null;
 
-    private static void checkRecipeManager() {
-        try {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc != null && mc.getConnection() != null) {
-                net.minecraft.world.item.crafting.RecipeManager currentManager = mc.getConnection().getRecipeManager();
-                if (currentManager != cachedRecipeManager) {
-                    craftableItems = null;
-                    recipesByOutput = null;
-                    cachedRecipeManager = currentManager;
-                    if (reiActive) {
-                        ReiCompat.clearCache();
-                    }
-                }
-            }
-        } catch (Throwable ignored) {
-        }
+    private static Set<Item> activeCompatibleItems = null;
+    private static RecipeBookType cachedCompatibleBookType = null;
+    private static Set<Item> activeCraftableItems = null;
+
+    public static void clearCompatibleItemsCache() {
+        activeCompatibleItems = null;
+        cachedCompatibleBookType = null;
     }
 
     public static void clearCraftableItemsCache() {
-        craftableItems = null;
-        recipesByOutput = null;
-        cachedRecipeManager = null;
+        activeCraftableItems = null;
         if (reiActive) {
             ReiCompat.clearCache();
         }
     }
 
-    public static void setActiveContext(StackedContents stackedContents, RecipeBookType bookType, boolean isInventory) {
+    public static void setActiveContext(StackedItemContents stackedContents, RecipeBookType bookType,
+            boolean isInventory) {
         activeStackedContents = stackedContents;
         activeRecipeBookType = bookType;
         activeIsInventory = isInventory;
+        clearCompatibleItemsCache();
+        clearCraftableItemsCache();
     }
 
-    public static StackedContents getActiveStackedContents() {
+    public static StackedItemContents getActiveStackedContents() {
         return activeStackedContents;
     }
 
@@ -79,121 +67,95 @@ public class RecipeBrowserIntegration {
         return activeIsInventory;
     }
 
-    private static Map<Item, List<RecipeHolder<?>>> getRecipesByOutput() {
-        checkRecipeManager();
-        if (recipesByOutput == null) {
-            recipesByOutput = new HashMap<>();
-            try {
-                Minecraft mc = Minecraft.getInstance();
-                if (mc != null && mc.getConnection() != null) {
-                    for (RecipeHolder<?> holder : mc.getConnection().getRecipeManager().getRecipes()) {
-                        try {
-                            ItemStack result = holder.value().getResultItem(mc.getConnection().registryAccess());
-                            if (result != null && !result.isEmpty()) {
-                                recipesByOutput.computeIfAbsent(result.getItem(), k -> new ArrayList<>()).add(holder);
-                            }
-                        } catch (Throwable ignored) {
-                        }
-                    }
-                }
-            } catch (Throwable ignored) {
-            }
-        }
-        return recipesByOutput;
-    }
-
-    public static boolean isRecipeCompatible(RecipeHolder<?> recipe, RecipeBookType bookType) {
-        if (recipe == null)
-            return false;
-        net.minecraft.world.item.crafting.RecipeType<?> recipeType = recipe.value().getType();
+    public static boolean isCategoryCompatible(RecipeBookCategory entryCategory, RecipeBookType bookType) {
+        SearchRecipeBookCategory searchCategory = null;
         if (bookType == RecipeBookType.CRAFTING) {
-            return recipeType == net.minecraft.world.item.crafting.RecipeType.CRAFTING;
+            searchCategory = SearchRecipeBookCategory.CRAFTING;
         } else if (bookType == RecipeBookType.FURNACE) {
-            return recipeType == net.minecraft.world.item.crafting.RecipeType.SMELTING;
+            searchCategory = SearchRecipeBookCategory.FURNACE;
         } else if (bookType == RecipeBookType.BLAST_FURNACE) {
-            return recipeType == net.minecraft.world.item.crafting.RecipeType.BLASTING;
+            searchCategory = SearchRecipeBookCategory.BLAST_FURNACE;
         } else if (bookType == RecipeBookType.SMOKER) {
-            return recipeType == net.minecraft.world.item.crafting.RecipeType.SMOKING;
+            searchCategory = SearchRecipeBookCategory.SMOKER;
         }
-        try {
-            String bookTypeName = bookType.name();
-            if (bookTypeName != null) {
-                int firstUnderscore = bookTypeName.indexOf('_');
-                if (firstUnderscore > 0) {
-                    String namespace = bookTypeName.substring(0, firstUnderscore).toLowerCase(Locale.ROOT);
-                    String path = bookTypeName.substring(firstUnderscore + 1).toLowerCase(Locale.ROOT);
-                    ResourceLocation typeKey = BuiltInRegistries.RECIPE_TYPE.getKey(recipeType);
-                    if (typeKey != null && typeKey.getNamespace().equals(namespace) && typeKey.getPath().equals(path)) {
-                        return true;
-                    }
-                }
-            }
-        } catch (Throwable ignored) {
+        if (searchCategory != null) {
+            return searchCategory.includedCategories().contains(entryCategory);
         }
         return false;
     }
 
     public static boolean hasCompatibleRecipe(Item item, RecipeBookType bookType) {
-        Map<Item, List<RecipeHolder<?>>> recipes = getRecipesByOutput();
-        List<RecipeHolder<?>> recipeList = recipes.get(item);
-        if (recipeList == null || recipeList.isEmpty()) {
-            return false;
+        if (activeCompatibleItems != null && cachedCompatibleBookType == bookType) {
+            return activeCompatibleItems.contains(item);
         }
-        for (RecipeHolder<?> holder : recipeList) {
-            if (isRecipeCompatible(holder, bookType)) {
-                return true;
-            }
-        }
-        return false;
-    }
 
-    public static boolean isCraftable(Item item, StackedContents stackedContents, RecipeBookType bookType) {
-        Map<Item, List<RecipeHolder<?>>> recipes = getRecipesByOutput();
-        List<RecipeHolder<?>> recipeList = recipes.get(item);
-        if (recipeList == null || recipeList.isEmpty()) {
-            return false;
-        }
-        for (RecipeHolder<?> holder : recipeList) {
-            if (isRecipeCompatible(holder, bookType)) {
-                if (holder.value().isSpecial()) {
-                    continue;
-                }
-                if (stackedContents.canCraft(holder.value(), null)) {
-                    return true;
+        Set<Item> compatible = new HashSet<>();
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level != null && mc.player != null) {
+                ContextMap contextMap = SlotDisplayContext.fromLevel(mc.level);
+                ClientRecipeBook book = mc.player.getRecipeBook();
+                for (RecipeCollection collection : book.getCollections()) {
+                    for (RecipeDisplayEntry entry : collection.getRecipes()) {
+                        if (isCategoryCompatible(entry.category(), bookType)) {
+                            for (ItemStack output : entry.resultItems(contextMap)) {
+                                if (output != null && !output.isEmpty()) {
+                                    compatible.add(output.getItem());
+                                }
+                            }
+                        }
+                    }
                 }
             }
+        } catch (Throwable ignored) {
         }
-        return false;
+
+        activeCompatibleItems = compatible;
+        cachedCompatibleBookType = bookType;
+        return activeCompatibleItems.contains(item);
     }
 
     public static boolean isCraftable(Item item) {
         if (activeStackedContents == null || activeRecipeBookType == null) {
             return false;
         }
-        return isCraftable(item, activeStackedContents, activeRecipeBookType);
-    }
+        if (activeCraftableItems != null) {
+            return activeCraftableItems.contains(item);
+        }
 
-    public static Set<Item> getCraftableItems() {
-        checkRecipeManager();
-        if (craftableItems == null) {
-            craftableItems = new HashSet<>();
-            try {
-                Minecraft mc = Minecraft.getInstance();
-                if (mc != null && mc.getConnection() != null) {
-                    for (RecipeHolder<?> holder : mc.getConnection().getRecipeManager().getRecipes()) {
-                        try {
-                            ItemStack result = holder.value().getResultItem(mc.getConnection().registryAccess());
-                            if (result != null && !result.isEmpty()) {
-                                craftableItems.add(result.getItem());
+        Set<Item> craftable = new HashSet<>();
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level != null && mc.player != null) {
+                ContextMap contextMap = SlotDisplayContext.fromLevel(mc.level);
+                ClientRecipeBook book = mc.player.getRecipeBook();
+                for (RecipeCollection collection : book.getCollections()) {
+                    for (RecipeDisplayEntry entry : collection.getRecipes()) {
+                        if (entry.canCraft(activeStackedContents)) {
+                            if (isCategoryCompatible(entry.category(), activeRecipeBookType)) {
+                                for (ItemStack output : entry.resultItems(contextMap)) {
+                                    if (output != null && !output.isEmpty()) {
+                                        craftable.add(output.getItem());
+                                    }
+                                }
                             }
-                        } catch (Throwable ignored) {
                         }
                     }
                 }
-            } catch (Throwable ignored) {
             }
+        } catch (Throwable ignored) {
         }
-        return craftableItems;
+
+        activeCraftableItems = craftable;
+        return activeCraftableItems.contains(item);
+    }
+
+    public static Set<Item> getCraftableItems() {
+        if (activeCraftableItems != null) {
+            return activeCraftableItems;
+        }
+        isCraftable(null);
+        return activeCraftableItems != null ? activeCraftableItems : new HashSet<>();
     }
 
     public static void setJeiActive(boolean active) {
@@ -205,7 +167,6 @@ public class RecipeBrowserIntegration {
     }
 
     public static void setEmiActive(boolean active) {
-        emiActive = active;
     }
 
     public static void setJeiRuntime(Object runtime) {
@@ -221,7 +182,7 @@ public class RecipeBrowserIntegration {
     }
 
     public static boolean isEmiActive() {
-        return emiActive;
+        return false;
     }
 
     public static boolean isActive() {
@@ -231,7 +192,7 @@ public class RecipeBrowserIntegration {
     public static boolean isRecipeBookVisible() {
         try {
             Minecraft mc = Minecraft.getInstance();
-            return mc.screen instanceof RecipeUpdateListener;
+            return mc.gui.screen() instanceof RecipeUpdateListener;
         } catch (Throwable ignored) {
         }
         return false;
@@ -258,9 +219,6 @@ public class RecipeBrowserIntegration {
         if (isReiActive()) {
             return ReiCompat.getFilterText();
         }
-        if (isEmiActive()) {
-            return EmiCompat.getFilterText();
-        }
         return "";
     }
 
@@ -269,8 +227,6 @@ public class RecipeBrowserIntegration {
             JeiCompat.setFilterText(jeiRuntime, text);
         } else if (isReiActive()) {
             ReiCompat.setFilterText(text);
-        } else if (isEmiActive()) {
-            EmiCompat.setFilterText(text);
         }
     }
 
@@ -280,8 +236,6 @@ public class RecipeBrowserIntegration {
             rawItems.addAll(JeiCompat.getFilteredItemStacks(jeiRuntime));
         } else if (isReiActive()) {
             rawItems.addAll(ReiCompat.getFilteredItemStacks());
-        } else if (isEmiActive()) {
-            rawItems.addAll(EmiCompat.getFilteredItemStacks());
         }
 
         if (rawItems.isEmpty()) {
@@ -313,9 +267,6 @@ public class RecipeBrowserIntegration {
         if (isReiActive()) {
             return ReiCompat.hasRecipesOrUsages(stack);
         }
-        if (isEmiActive()) {
-            return EmiCompat.hasRecipesOrUsages(stack);
-        }
         return false;
     }
 
@@ -339,8 +290,6 @@ public class RecipeBrowserIntegration {
             JeiCompat.showRecipes(jeiRuntime, stack);
         } else if (isReiActive()) {
             ReiCompat.showRecipes(stack);
-        } else if (isEmiActive()) {
-            EmiCompat.showRecipes(stack);
         }
     }
 
@@ -349,8 +298,6 @@ public class RecipeBrowserIntegration {
             JeiCompat.showUsages(jeiRuntime, stack);
         } else if (isReiActive()) {
             ReiCompat.showUsages(stack);
-        } else if (isEmiActive()) {
-            EmiCompat.showUsages(stack);
         }
     }
 }

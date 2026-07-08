@@ -76,7 +76,6 @@ dependencies {
     compileOnly 'io.github.llamalad7:mixinextras-common:0.5.3'
     annotationProcessor 'io.github.llamalad7:mixinextras-common:0.5.3'
 
-    compileOnly "mezz.jei:jei-1.21.1-neoforge:19.25.1.332"
-    compileOnly "me.shedaniel:RoughlyEnoughItems-neoforge:16.0.729"
-    compileOnly "dev.emi:emi-neoforge:1.1.24+1.21.1"
+    compileOnly "mezz.jei:jei-26.2-neoforge:30.3.0.23"
+    compileOnly "me.shedaniel:RoughlyEnoughItems-neoforge:26.2.820"
 }
